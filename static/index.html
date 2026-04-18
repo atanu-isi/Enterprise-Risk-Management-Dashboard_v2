@@ -152,6 +152,12 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);overflow-x:h
 .card-body{padding:16px;}
 .chart-wrapper{position:relative;width:100%;border-radius:var(--radius-sm);overflow:hidden;}
 .chart-wrapper canvas{border-radius:var(--radius-sm);}
+/* Insight text under donut charts */
+.donut-insight{
+  font-size:.69rem;color:var(--text3);font-style:italic;
+  padding:7px 10px 2px;line-height:1.5;text-align:center;
+  border-top:1px dashed var(--border);margin-top:6px;
+}
 
 /* CHART MODAL */
 #chart-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px);}
@@ -1123,6 +1129,14 @@ function makeChart(id, config){
   // Make chart clickable to zoom
   canvas.style.cursor = 'pointer';
   canvas.onclick = () => openChartModal(id, config);
+  // ── Render insight text below doughnut charts ──────────────────────────
+  const insight = config && config.options && config.options._insightText;
+  if(insight && config.type === 'doughnut'){
+    const wrapper = canvas.closest('.chart-wrapper') || canvas.parentNode;
+    let insightEl = wrapper.querySelector('.donut-insight');
+    if(!insightEl){ insightEl = document.createElement('div'); insightEl.className='donut-insight'; wrapper.appendChild(insightEl); }
+    insightEl.textContent = insight;
+  }
   return chart;
 }
 
@@ -1144,22 +1158,108 @@ function barCfg(labels, data, labelStr, colors, opts){
   };
 }
 
-function donutCfg(labels, data, colors){
+/**
+ * donutCfg — Enhanced doughnut chart configuration
+ * ─────────────────────────────────────────────────
+ * Features added:
+ *  1. Outside callout labels showing "Label: XX%" on each arc
+ *  2. Centre text plugin: largest segment name + total count
+ *  3. Consistent color mapping: Green = Low risk, Blue = Critical
+ *  4. Thicker arcs (cutout 62%) for better readability
+ *  5. insightText optional param for a brief description rendered below the chart
+ */
+function donutCfg(labels, data, colors, insightText){
+  const total = data.reduce((a,b)=>a+(b||0),0);
+  // ── Datalabels plugin (inline arc labels) ──────────────────────────────
+  const datalabelsPlugin = {
+    display: ctx => {
+      const val = ctx.dataset.data[ctx.dataIndex];
+      return total > 0 && (val/total) >= 0.04; // hide slices < 4%
+    },
+    color: '#ffffff',
+    font: { size: 10, weight: '700', family: "'IBM Plex Sans', sans-serif" },
+    anchor: 'center',
+    align: 'center',
+    formatter: (val, ctx) => {
+      const pct = total ? (val/total*100).toFixed(1) : 0;
+      return pct + '%';
+    },
+    textShadow: true,
+    textStrokeColor: 'rgba(0,0,0,0.45)',
+    textStrokeWidth: 2
+  };
+
+  // ── Centre-text custom plugin (inline, per-chart) ──────────────────────
+  const centreTextPlugin = {
+    id: 'centreText_' + Math.random().toString(36).slice(2),
+    afterDraw(chart) {
+      const { ctx, chartArea: { top, bottom, left, right } } = chart;
+      const cx = (left + right) / 2;
+      const cy = (top + bottom) / 2;
+      ctx.save();
+      // Total number
+      ctx.font = "700 18px 'IBM Plex Sans', sans-serif";
+      ctx.fillStyle = TEXT_COLOR;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(total, cx, cy - 9);
+      // "Total" label
+      ctx.font = "500 10px 'IBM Plex Sans', sans-serif";
+      ctx.fillStyle = TEXT_COLOR2;
+      ctx.fillText('Total', cx, cy + 10);
+      ctx.restore();
+    }
+  };
+
   return {
     type:'doughnut',
     data:{labels, datasets:[{
       data,
       backgroundColor: (colors||COLORS.paletteAlpha).slice(0,labels.length),
       borderColor:'rgba(240,242,245,0.9)',
-      borderWidth:2, hoverOffset:7
+      borderWidth:2, hoverOffset:8
     }]},
     options:{
       responsive:true, maintainAspectRatio:true,
+      cutout: '62%',
       plugins:{
-        legend:{ position:'bottom', labels:{color:TEXT_COLOR,font:{size:11,family:"'IBM Plex Sans',sans-serif"},padding:14,usePointStyle:true,pointStyleWidth:10} },
-        tooltip:{ callbacks:{ label:ctx=>{ const tot=ctx.dataset.data.reduce((a,b)=>a+b,0); const pct=tot?(ctx.raw/tot*100).toFixed(1):'—'; return ` ${ctx.label}: ${ctx.raw} (${pct}%)`; } } }
-      }
-    }
+        legend:{
+          position:'right',
+          labels:{
+            color:TEXT_COLOR,
+            font:{size:11,family:"'IBM Plex Sans',sans-serif"},
+            padding:10,
+            usePointStyle:true,
+            pointStyleWidth:10,
+            generateLabels: chart => {
+              const ds = chart.data.datasets[0];
+              const tot = ds.data.reduce((a,b)=>a+(b||0),0);
+              return chart.data.labels.map((lbl,i) => ({
+                text: `${lbl}  ${tot?(ds.data[i]/tot*100).toFixed(1):'0'}%`,
+                fillStyle: ds.backgroundColor[i],
+                strokeStyle: ds.backgroundColor[i],
+                pointStyle: 'circle',
+                hidden: false,
+                index: i
+              }));
+            }
+          }
+        },
+        tooltip:{
+          callbacks:{
+            label: ctx => {
+              const tot = ctx.dataset.data.reduce((a,b)=>a+b,0);
+              const pct = tot?(ctx.raw/tot*100).toFixed(1):'—';
+              return ` ${ctx.label}: ${ctx.raw} (${pct}%)`;
+            }
+          }
+        },
+        /* datalabels is loaded conditionally below */
+      },
+      /* store insightText for renderer */
+      _insightText: insightText || null
+    },
+    plugins: [centreTextPlugin]
   };
 }
 
@@ -1483,7 +1583,19 @@ async function loadOverview(force){
     }
   });
 
-  makeChart('ragDoughnutChart', donutCfg(['Green','Amber','Red'],[g,a,r],[COLORS.green, COLORS.amber, COLORS.red]));
+  /* ── Overview RAG doughnut: Green=Low/On-track, Amber=Elevated, Red=High, Blue=Critical ──
+     Color convention held across ALL charts in this dashboard:
+       Green  → Low risk / within tolerance
+       Amber  → Elevated / watch-list
+       Red    → High risk / breach
+       Blue   → Critical / immediate action
+  */
+  makeChart('ragDoughnutChart', donutCfg(
+    ['Green (Low)','Amber (Elevated)','Red (High)'],
+    [g, a, r],
+    [COLORS.green, COLORS.amber, COLORS.red],
+    'Shows the share of KRIs at each risk level across all categories. A healthy portfolio has the majority in Green.'
+  ));
 
   // Build clickable risk boxes
   const boxContainer = document.getElementById('risk-boxes-container');
@@ -1518,7 +1630,20 @@ async function loadCredit(force){
 
   if(sum.npa_dist){
     const labs=Object.keys(sum.npa_dist), vals=labs.map(k=>sum.npa_dist[k]);
-    makeChart('creditNpaChart', donutCfg(labs, vals, COLORS.paletteAlpha));
+    /* NPA (Non-Performing Asset) Distribution:
+       Standard = Green (performing / low risk)
+       Sub-standard / Doubtful = Amber (elevated)
+       Loss = Red (high risk) */
+    const npaColorMap = {
+      'Standard': COLORS.green,
+      'Sub-Standard': COLORS.amber,
+      'Doubtful': COLORS.amber,
+      'Loss': COLORS.red,
+      'NPA': COLORS.red
+    };
+    const npaColors = labs.map(l => npaColorMap[l] || COLORS.paletteAlpha[labs.indexOf(l) % COLORS.paletteAlpha.length]);
+    makeChart('creditNpaChart', donutCfg(labs, vals, npaColors,
+      'Breakdown of loan portfolio by NPA category. Standard (Green) = performing loans; Sub-Standard/Doubtful (Amber) = watch-list; Loss (Red) = fully impaired assets requiring full provision.'));
   }
   if(sum.sector_exposure){
     const labs=Object.keys(sum.sector_exposure).slice(0,10), vals=labs.map(k=>sum.sector_exposure[k]);
@@ -1548,7 +1673,9 @@ async function loadMarket(force){
   }
   if(sum.asset_class_exposure){
     const labs=Object.keys(sum.asset_class_exposure), vals=labs.map(k=>sum.asset_class_exposure[k]);
-    makeChart('marketAssetChart', donutCfg(labs, vals));
+    /* Asset class exposure: multi-color palette — no single risk color applies */
+    makeChart('marketAssetChart', donutCfg(labs, vals, COLORS.paletteAlpha,
+      'Portfolio split by asset class (₹ Cr). Diversification across equities, bonds, derivatives & money-market instruments reduces concentration risk.'));
   }
   renderKRIGrid('market-kri-grid', kris);
 }
@@ -1579,7 +1706,18 @@ async function loadOpRisk(force){
   const statusData = sum.status_dist || sum.status;
   if(statusData){
     const labs=Object.keys(statusData), vals=labs.map(k=>statusData[k]);
-    makeChart('opStatusChart', donutCfg(labs, vals));
+    /* Incident status color convention:
+       Closed/Resolved = Green (risk resolved)
+       In Progress/Open = Amber (active remediation)
+       Critical/Escalated = Blue (immediate attention) */
+    const statusColorMap = {
+      'Closed':COLORS.green,'Resolved':COLORS.green,'Completed':COLORS.green,
+      'Open':COLORS.amber,'In Progress':COLORS.amber,'Pending':COLORS.amber,
+      'Critical':COLORS.blue,'Escalated':COLORS.blue,'Overdue':COLORS.red
+    };
+    const statusColors = labs.map((l,i) => statusColorMap[l] || COLORS.paletteAlpha[i % COLORS.paletteAlpha.length]);
+    makeChart('opStatusChart', donutCfg(labs, vals, statusColors,
+      'Lifecycle status of operational loss incidents. Green = resolved, Amber = under remediation, Blue = critical/escalated requiring senior attention.'));
   }
   renderKRIGrid('opRisk-kri-grid', kris);
 }
@@ -1803,12 +1941,14 @@ async function loadConcentration(force){
   const dimData = sum.dimension_dist;
   if(dimData && Object.keys(dimData).length){
     const labs=Object.keys(dimData).slice(0,10), vals=labs.map(k=>dimData[k]);
-    makeChart('concSectorChart', donutCfg(labs, vals));
+    makeChart('concSectorChart', donutCfg(labs, vals, COLORS.paletteAlpha,
+      'Count of concentration records by dimension (Sector, Geography, Borrower, etc.). Helps identify which dimension has the most risk entries requiring monitoring.'));
   } else if(rows.length){
     const dimMap={};
     rows.forEach(r=>{ const d=r['Dimension']||'Unknown'; dimMap[d]=(dimMap[d]||0)+1; });
     const labs=Object.keys(dimMap).slice(0,10), vals=labs.map(k=>dimMap[k]);
-    if(labs.length) makeChart('concSectorChart', donutCfg(labs, vals));
+    if(labs.length) makeChart('concSectorChart', donutCfg(labs, vals, COLORS.paletteAlpha,
+      'Count of concentration records by dimension (Sector, Geography, Borrower, etc.). Helps identify which dimension has the most risk entries requiring monitoring.'));
   }
 
   // Chart 2: Top category exposures (bar) — use sector_exposure if available, else top_exposures
@@ -1859,16 +1999,30 @@ async function loadClimate(force){
     statCard('Climate VaR', climateVar, 'Total climate value-at-risk (₹ Cr)', 'red');
 
   // Chart 1: TCFD Category distribution — sourced directly from Excel TCFD_Category column
+  /* TCFD color convention: Governance=Blue(critical oversight), Strategy=Amber(planning risk),
+     Risk Management=Red(active risk), Metrics & Targets=Green(measured/low) */
+  const tcfdColorMap = {
+    'Governance': COLORS.blue,
+    'Strategy': COLORS.amber,
+    'Risk Management': COLORS.red,
+    'Metrics & Targets': COLORS.green,
+    'Metrics and Targets': COLORS.green
+  };
+  const tcfdInsight = 'TCFD framework categories: Governance (Blue) = board oversight; Strategy (Amber) = business planning risk; Risk Management (Red) = active climate risks; Metrics & Targets (Green) = measured & controlled.';
   const tcfdData = sum.tcfd_dist;
   if(tcfdData && Object.keys(tcfdData).length){
     const labs=Object.keys(tcfdData), vals=labs.map(k=>tcfdData[k]);
-    makeChart('climateTypeChart', donutCfg(labs, vals, [COLORS.amber, COLORS.blue, COLORS.green, COLORS.red]));
+    const tcfdColors = labs.map(l => tcfdColorMap[l] || COLORS.paletteAlpha[labs.indexOf(l) % COLORS.paletteAlpha.length]);
+    makeChart('climateTypeChart', donutCfg(labs, vals, tcfdColors, tcfdInsight));
   } else if(rows.length){
     // Build TCFD dist from raw rows
     const tcfdMap={};
     rows.forEach(r=>{ const t=r['TCFD_Category']||'Unknown'; tcfdMap[t]=(tcfdMap[t]||0)+1; });
     const labs=Object.keys(tcfdMap), vals=labs.map(k=>tcfdMap[k]);
-    if(labs.length) makeChart('climateTypeChart', donutCfg(labs, vals, [COLORS.amber, COLORS.blue, COLORS.green, COLORS.red]));
+    if(labs.length){
+      const tcfdColors = labs.map(l => tcfdColorMap[l] || COLORS.paletteAlpha[labs.indexOf(l) % COLORS.paletteAlpha.length]);
+      makeChart('climateTypeChart', donutCfg(labs, vals, tcfdColors, tcfdInsight));
+    }
   }
 
   // Chart 2: Sector exposure (₹ Cr) — sourced from Sector + Exposure_Cr columns in Excel
@@ -1904,7 +2058,18 @@ async function loadCyber(force){
 
   if(sum.severity_dist){
     const labs=Object.keys(sum.severity_dist), vals=labs.map(k=>sum.severity_dist[k]);
-    makeChart('cyberSevChart', donutCfg(labs, vals, [COLORS.red,COLORS.amber,COLORS.blue,COLORS.green]));
+    /* Cyber severity color convention:
+       Critical = Blue (needs immediate escalation per dashboard convention)
+       High = Red, Medium = Amber, Low = Green */
+    const sevColorMap = {
+      'Critical':COLORS.blue,'CRITICAL':COLORS.blue,
+      'High':COLORS.red,'HIGH':COLORS.red,
+      'Medium':COLORS.amber,'MEDIUM':COLORS.amber,'Moderate':COLORS.amber,
+      'Low':COLORS.green,'LOW':COLORS.green,'Informational':COLORS.green
+    };
+    const sevColors = labs.map((l,i) => sevColorMap[l] || [COLORS.blue,COLORS.red,COLORS.amber,COLORS.green][i % 4]);
+    makeChart('cyberSevChart', donutCfg(labs, vals, sevColors,
+      'Distribution of cyber incidents by CVSS severity. Critical (Blue) = immediate response needed; High (Red) = urgent; Medium (Amber) = scheduled remediation; Low (Green) = informational.'));
   }
   if(sum.attack_vectors){
     const labs=Object.keys(sum.attack_vectors).slice(0,8), vals=labs.map(k=>sum.attack_vectors[k]);
@@ -1929,7 +2094,8 @@ async function loadFraud(force){
 
   if(sum.channel_dist){
     const labs=Object.keys(sum.channel_dist), vals=labs.map(k=>sum.channel_dist[k]);
-    makeChart('fraudChannelChart', donutCfg(labs, vals));
+    makeChart('fraudChannelChart', donutCfg(labs, vals, COLORS.paletteAlpha,
+      'Fraud cases split by originating channel (e.g. Digital, Branch, ATM, Cards). Identifies which channels carry the highest fraud volume for targeted controls.'));
   }
   if(sum.fraud_type_dist){
     const labs=Object.keys(sum.fraud_type_dist).slice(0,8), vals=labs.map(k=>sum.fraud_type_dist[k]);
@@ -1954,7 +2120,18 @@ async function loadThirdParty(force){
 
   if(sum.criticality_dist){
     const labs=Object.keys(sum.criticality_dist), vals=labs.map(k=>sum.criticality_dist[k]);
-    makeChart('tprCritChart', donutCfg(labs, vals));
+    /* Vendor criticality color convention:
+       Critical = Blue (immediate attention per dashboard convention)
+       High = Red, Medium = Amber, Low = Green */
+    const critColorMap = {
+      'Critical':COLORS.blue,'CRITICAL':COLORS.blue,
+      'High':COLORS.red,'HIGH':COLORS.red,
+      'Medium':COLORS.amber,'MEDIUM':COLORS.amber,
+      'Low':COLORS.green,'LOW':COLORS.green
+    };
+    const critColors = labs.map((l,i) => critColorMap[l] || COLORS.paletteAlpha[i % COLORS.paletteAlpha.length]);
+    makeChart('tprCritChart', donutCfg(labs, vals, critColors,
+      'Vendor portfolio by criticality tier. Critical (Blue) = business-critical; High (Red) = significant impact if disrupted; Medium (Amber) = moderate dependency; Low (Green) = replaceable vendors.'));
   }
   if(sum.sla_breach){
     const labs=Object.keys(sum.sla_breach), vals=labs.map(k=>sum.sla_breach[k]);
@@ -1979,7 +2156,8 @@ async function loadReputational(force){
 
   if(sum.category_dist){
     const labs=Object.keys(sum.category_dist).slice(0,8), vals=labs.map(k=>sum.category_dist[k]);
-    makeChart('repCatChart', donutCfg(labs, vals));
+    makeChart('repCatChart', donutCfg(labs, vals, COLORS.paletteAlpha,
+      'Reputational events grouped by category (e.g. Media Coverage, Social Media, Regulatory, Customer Complaints). Identifies the primary driver of reputational pressure.'));
   }
   if(sum.rag){
     const labs=['Green','Amber','Red'], vs=labs.map(k=>sum.rag[k]||0);
@@ -2004,7 +2182,20 @@ async function loadStrategic(force){
 
   if(sum.bsc_dist){
     const labs=Object.keys(sum.bsc_dist), vs=labs.map(k=>sum.bsc_dist[k]);
-    makeChart('stratBscChart', donutCfg(labs, vs));
+    /* Balanced Scorecard perspective colors:
+       Financial = Blue (critical performance driver)
+       Customer = Green (healthy relationship indicator)
+       Internal Process = Amber (operational watch)
+       Learning & Growth = Red (strategic gap risk) */
+    const bscColorMap = {
+      'Financial':COLORS.blue,'Finance':COLORS.blue,
+      'Customer':COLORS.green,'Customer Perspective':COLORS.green,
+      'Internal Process':COLORS.amber,'Internal':COLORS.amber,'Process':COLORS.amber,
+      'Learning & Growth':COLORS.red,'Learning':COLORS.red,'Growth':COLORS.red,'Innovation':COLORS.red
+    };
+    const bscColors = labs.map((l,i) => bscColorMap[l] || COLORS.paletteAlpha[i % COLORS.paletteAlpha.length]);
+    makeChart('stratBscChart', donutCfg(labs, vs, bscColors,
+      'Balanced Scorecard (BSC) perspectives: Financial (Blue) = revenue/returns; Customer (Green) = satisfaction/NPS; Internal Process (Amber) = efficiency; Learning & Growth (Red) = capability gaps.'));
   }
   if(sum.rag){
     const labs=['Green','Amber','Red'], vs=labs.map(k=>sum.rag[k]||0);
