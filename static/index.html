@@ -668,7 +668,7 @@ tbody tr:nth-child(even) td{background:rgba(26,79,160,.03);}
       <div class="stats-row cols-4" id="opRisk-stats"><div class="loading"><div class="spinner"></div>Loading…</div></div>
       <div class="cards-grid cols-2">
         <div class="card">
-          <div class="card-header"><h3>Loss by Business Unit (₹ Lakhs)</h3></div>
+          <div class="card-header"><h3>Loss by Business Unit (₹ Cr)</h3></div>
           <div class="card-body chart-bg-subtle"><div class="chart-wrapper"><canvas id="opBuChart" height="210"></canvas></div></div>
         </div>
         <div class="card">
@@ -1693,7 +1693,7 @@ async function loadOpRisk(force){
                  : sum.recovery_rate_pct != null ? parseFloat(sum.recovery_rate_pct).toFixed(1)+'%' : '—';
 
   document.getElementById('opRisk-stats').innerHTML =
-    statCard('Total Gross Loss',sum.total_loss!=null?'₹'+parseFloat(sum.total_loss).toFixed(0)+' L':sum.total_gross_loss!=null?'₹'+parseFloat(sum.total_gross_loss).toFixed(0)+' L':'—','₹ Lakhs','red')+
+    statCard('Total Gross Loss',sum.total_loss!=null?'₹'+parseFloat(sum.total_loss).toFixed(2)+' Cr':sum.total_gross_loss!=null?'₹'+parseFloat(sum.total_gross_loss).toFixed(2)+' Cr':'—','₹ Cr','red')+
     statCard('Total Incidents',sum.total_incidents||'—','Reported loss events','amber')+
     statCard('Open Incidents',openCount,'Incidents pending closure','amber')+
     statCard('Recovery Rate',recovStr,'Gross loss recovered','green');
@@ -1701,7 +1701,7 @@ async function loadOpRisk(force){
   const buData = sum.bu_loss || sum.loss_by_bu;
   if(buData){
     const labs=Object.keys(buData).slice(0,10), vals=labs.map(k=>buData[k]);
-    makeChart('opBuChart', barCfg(labs, vals, 'Loss (₹ Lakhs)', COLORS.paletteAlpha));
+    makeChart('opBuChart', barCfg(labs, vals, 'Loss (₹ Cr)', COLORS.paletteAlpha));
   }
   const statusData = sum.status_dist || sum.status;
   if(statusData){
@@ -2051,7 +2051,7 @@ async function loadCyber(force){
   const kris = (overview.data||[]).filter(k=>(k['Risk Category']||'').includes('Cyber'));
 
   document.getElementById('cyber-stats').innerHTML =
-    statCard('Financial Impact',sum.total_financial_impact!=null?'₹'+sum.total_financial_impact+' L':'—','Total impact (₹ Lakhs)','red')+
+    statCard('Financial Impact',sum.total_financial_impact!=null?'₹'+sum.total_financial_impact+' Cr':'—','Total impact (₹ Cr)','red')+
     statCard('Avg CVSS',sum.avg_cvss!=null?sum.avg_cvss.toFixed(1):'—','CVSS score (0–10)',sum.avg_cvss<7?'amber':'red')+
     statCard('Avg MTTD',sum.avg_mttd!=null?sum.avg_mttd.toFixed(1)+' hrs':'—','Mean time to detect','amber')+
     statCard('Avg MTTR',sum.avg_mttr!=null?sum.avg_mttr.toFixed(1)+' hrs':'—','Mean time to resolve','amber');
@@ -2087,8 +2087,8 @@ async function loadFraud(force){
   const kris = (overview.data||[]).filter(k=>(k['Risk Category']||'').includes('Fraud'));
 
   document.getElementById('fraud-stats').innerHTML =
-    statCard('Total Amount',sum.total_amount!=null?'₹'+sum.total_amount+' L':'—','₹ Lakhs','red')+
-    statCard('Net Loss',sum.total_net_loss!=null?'₹'+sum.total_net_loss+' L':'—','₹ Lakhs net loss','red')+
+    statCard('Total Amount',sum.total_amount!=null?'₹'+sum.total_amount+' Cr':'—','₹ Cr','red')+
+    statCard('Net Loss',sum.total_net_loss!=null?'₹'+sum.total_net_loss+' Cr':'—','₹ Cr net loss','red')+
     statCard('Recovery Rate',sum.avg_recovery_rate||'—','Average recovery','green')+
     statCard('Cases',sum.channel_dist?Object.values(sum.channel_dist).reduce((a,b)=>a+b,0):'—','Total fraud cases','amber');
 
