@@ -648,15 +648,15 @@ def op_summary():
     if df.empty:
         return {}
     r = {}
-    if "Gross_Loss_Lakhs" in df.columns:
-        r["total_gross_loss"] = round(float(df["Gross_Loss_Lakhs"].sum()), 2)
+    if "Gross_Loss_Cr" in df.columns:
+        r["total_gross_loss"] = round(float(df["Gross_Loss_Cr"].sum()), 2)
         r["total_loss"] = r["total_gross_loss"]  # alias
-    if "Net_Loss_Lakhs" in df.columns:
-        r["total_net_loss"] = round(float(df["Net_Loss_Lakhs"].sum()), 2)
-    if "Risk_Category" in df.columns and "Net_Loss_Lakhs" in df.columns:
-        r["loss_by_category"] = df.groupby("Risk_Category")["Net_Loss_Lakhs"].sum().round(2).to_dict()
-    if "Business_Unit" in df.columns and "Gross_Loss_Lakhs" in df.columns:
-        bu_loss = df.groupby("Business_Unit")["Gross_Loss_Lakhs"].sum().round(2).to_dict()
+    if "Net_Loss_Cr" in df.columns:
+        r["total_net_loss"] = round(float(df["Net_Loss_Cr"].sum()), 2)
+    if "Risk_Category" in df.columns and "Net_Loss_Cr" in df.columns:
+        r["loss_by_category"] = df.groupby("Risk_Category")["Net_Loss_Cr"].sum().round(2).to_dict()
+    if "Business_Unit" in df.columns and "Gross_Loss_Cr" in df.columns:
+        bu_loss = df.groupby("Business_Unit")["Gross_Loss_Cr"].sum().round(2).to_dict()
         r["loss_by_bu"] = bu_loss
         r["bu_loss"] = bu_loss  # alias for frontend
     if "RAG" in df.columns:
@@ -672,9 +672,9 @@ def op_summary():
             nm_mask = df[nm_col].astype(str).str.lower().str.contains("near", na=False)
             r["near_misses"] = int(nm_mask.sum())
             break
-    if "Gross_Loss_Lakhs" in df.columns and "Net_Loss_Lakhs" in df.columns:
-        gross = float(df["Gross_Loss_Lakhs"].sum())
-        net   = float(df["Net_Loss_Lakhs"].sum())
+    if "Gross_Loss_Cr" in df.columns and "Net_Loss_Cr" in df.columns:
+        gross = float(df["Gross_Loss_Cr"].sum())
+        net   = float(df["Net_Loss_Cr"].sum())
         if gross > 0:
             rr = round((gross - net) / gross * 100, 2)
             r["recovery_rate_pct"] = rr
@@ -941,8 +941,8 @@ def cyber_summary():
     if df.empty:
         return {}
     r = {}
-    if "Financial_Impact_Lakhs" in df.columns:
-        r["total_financial_impact"] = round(float(df["Financial_Impact_Lakhs"].sum()), 2)
+    if "Financial_Impact_Cr" in df.columns:
+        r["total_financial_impact"] = round(float(df["Financial_Impact_Cr"].sum()), 2)
     if "MTTD_Hrs" in df.columns:
         r["avg_mttd"] = round(float(df["MTTD_Hrs"].mean()), 2)
     if "MTTR_Hrs" in df.columns:
@@ -974,10 +974,10 @@ def fraud_summary():
     if df.empty:
         return {}
     r = {}
-    if "Amount_Lakhs" in df.columns:
-        r["total_amount"] = round(float(df["Amount_Lakhs"].sum()), 2)
-    if "Net_Loss_Lakhs" in df.columns:
-        r["total_net_loss"] = round(float(df["Net_Loss_Lakhs"].sum()), 2)
+    if "Amount_Cr" in df.columns:
+        r["total_amount"] = round(float(df["Amount_Cr"].sum()), 2)
+    if "Net_Loss_Cr" in df.columns:
+        r["total_net_loss"] = round(float(df["Net_Loss_Cr"].sum()), 2)
     if "Recovery_Rate_%" in df.columns:
         r["avg_recovery_rate"] = _fmt_pct(df["Recovery_Rate_%"].mean())
     if "Channel" in df.columns:
